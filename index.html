@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Board Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="menu-icon" onclick="toggleMenu()">☰</div>
+        <h1>Board Test Manager</h1>
+    </div>
+
+    <!-- Board Info Section -->
+    <div class="board-info" id="boardInfo">
+        <span id="boardName"></span>
+        <span id="serialNumber"></span>
+    </div>
+
+    <!-- Hamburger Menu -->
+    <div class="menu" id="menu">
+        <a href="#" onclick="showPrompt('boardName')">Add Board</a>
+        <a href="#" id="editSerialNumberLink" onclick="showPrompt('serialNumber')" style="pointer-events: none; opacity: 0.5; color: grey;">Edit Serial Number</a>
+
+    </div>
+
+   
+
+    <!-- Overlay for Modals -->
+    <div class="overlay" id="overlay">
+        <div class="modal" id="promptModal">
+            <h2 id="modalTitle">Add Board Name</h2>
+
+            <!-- Dropdown for Board Names -->
+            <select id="boardDropdown" onchange="handleDropdownChange()">
+                <option value="">Select a Board Name</option>
+            </select>
+
+            <!-- Input for Custom Board Name -->
+            <input type="text" id="modalInput" placeholder="Enter Board Name" oninput="toggleInputField()">
+            
+            <button onclick="handlePrompt()">Continue</button>
+        </div>
+    </div>
+
+    <!-- Additional Inputs Section (Initially Hidden) -->
+      <!-- Section to load web_interface_be.html content dynamically -->
+      <div id="webInterfaceContainer"></div>
+
+    <!-- CV Display Section (Initially Hidden) -->
+    <div id="cvDisplay" style="display: none;">
+        <h3>Generated CV:</h3>
+        <pre id="cvContent"></pre>
+        <button id="downloadCVBtn">Download CV</button>
+    </div>
+
+    <!-- Footer -->
+    <footer id="footer">
+        <span id="date-time"></span>
+        <!-- Reset Button -->
+        <button id="resetBtn" onclick="resetPage()">Reset</button>
+    </footer>
+
+    <script src="server.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script>
+        // Function to fetch and parse CSV file to populate the dropdown
+        function loadBoardNames() {
+            // Fetch the CSV file (assuming it's in the same directory)
+            fetch('boards.csv')
+            .then(response => response.text())
+            .then(csvData => {
+                // Use PapaParse to parse the CSV data
+                const parsedData = Papa.parse(csvData, { header: false, skipEmptyLines: true });
+                const boardDropdown = document.getElementById('boardDropdown');
+                
+                // Loop through parsed data and add options to the dropdown
+                parsedData.data.forEach(row => {
+                    const option = document.createElement('option');
+                    option.value = row[0];
+                    option.textContent = row[0];
+                    boardDropdown.appendChild(option);
+                });
+            })
+            .catch(error => console.error('Error loading CSV file:', error));
+        }
+
+         // Function to load web_interface_be.html into the page
+         function loadWebInterface() {
+    fetch('web_interface_be.html')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.text();
+        })
+        .then(htmlContent => {
+            const container = document.getElementById('webInterfaceContainer');
+            container.innerHTML = htmlContent;
+            console.log('web_interface_be.html loaded successfully');
+            
+            // Now we need to ensure the script in web_interface_be.html is executed
+            const scriptTags = container.querySelectorAll('script');
+            scriptTags.forEach(script => {
+                const newScript = document.createElement('script');
+                newScript.textContent = script.textContent; // Copy the script's content
+                document.body.appendChild(newScript); // Append to body to execute
+            });
+
+            // After the script is executed, check if LEDControlApp is available
+            if (typeof window.LEDControlApp === 'function') {
+                new window.LEDControlApp();
+                console.log('LEDControlApp initialized successfully.');
+            } else {
+                console.error('LEDControlApp class is not defined.');
+            }
+        })
+        .catch(error => console.error('Error loading web_interface_be.html:', error));
+}
+
+
+
+//function initializeWebInterfaceFunctions() {
+    // Add any logic here if needed in the future.
+  
+  //  console.log('Web interface functions initialized.');
+//}
+
+
+        // Call the function to load board names when the page is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            loadBoardNames();
+            
+            
+        });
+        // Call the function to load board names when the page is loaded
+       
+    </script>
+</body>
+</html>

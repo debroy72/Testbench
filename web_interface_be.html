@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LED Control with Web Serial</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f8f8f8;
+        }
+        h1 {
+            color: #333;
+        }
+        .section {
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+		.command-button {
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            background-color: #554f53;
+            color: white;
+            cursor: pointer;
+        }
+		.command-button1 {
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            background-color: #00ff2f;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+        #log {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 10px;
+            white-space: pre-wrap; 
+            max-height: 200px;
+            overflow-y: auto; 
+        }
+    </style>
+    <script type="module">
+        class SerialHandler {
+            constructor() {
+                this.encoder = new TextEncoder();
+                this.decoder = new TextDecoder();
+                this.port = null;
+            }
+
+            async init() {
+                if (!('serial' in navigator)) {
+                    console.error('Web serial isn\'t enabled in your browser.');
+                    return;
+                }
+
+                try {
+                    this.port = await navigator.serial.requestPort();
+                    await this.port.open({ baudRate: 115200 });
+                    this.writer = this.port.writable.getWriter();
+                    this.reader = this.port.readable.getReader();
+                } catch (error) {
+                    console.error('Error initializing serial port:', error);
+					alert(`Failed to initialize serial port: ${error.message}`);
+                }
+            }
+
+            async write(data) {
+                try {
+                    const dataArrayBuffer = this.encoder.encode(data);
+                    await this.writer.write(dataArrayBuffer);
+                } catch (error) {
+                    console.error('Error writing to port:', error);
+                }
+            }
+
+            async read() {
+                try {
+                    const { value, done } = await this.reader.read();
+                    if (done) return null;
+                    return this.decoder.decode(value);
+                } catch (error) {
+                    console.error('Error reading from port:', error);
+                    return null;
+                }
+            }
+
+            async disconnect() {
+                if (this.writer) {
+                    this.writer.releaseLock();
+                }
+                if (this.reader) {
+                    this.reader.releaseLock();
+                }
+                if (this.port) {
+                    await this.port.close();
+                    this.port = null;
+                }
+            }
+        }
+		console.log('Defining LEDControlApp class');
+        class LEDControlApp {
+            constructor() {
+                this.serialHandler = new SerialHandler();
+				this.initializeUI();
+			}
+			initializeUI() {
+                this.connectButtonElem = document.getElementById('connect-to-serial');
+                this.disconnectButtonElem = document.getElementById('disconnect-serial');
+
+                this.messageButtons = document.querySelectorAll('.message-button');   // alle button message-button
+				this.commandButtons = document.querySelectorAll('.command-button, .command-button1');
+
+                this.serialMessagesContainer = document.getElementById('serial-messages-container');
+
+                this.connectButtonElem.addEventListener('click', () => this.connect());
+                this.disconnectButtonElem.addEventListener('click', () => this.disconnect());
+                
+                this.messageButtons.forEach(button => 
+                    button.addEventListener('click', () => this.handleMessageButtonClick(button))
+                );
+                   
+				this.commandButtons.forEach(button => 
+                    button.addEventListener('click', () => this.handleCommandButtonClick(button))
+					
+                );
+				
+
+            }
+		
+
+            async connect() {
+				try {
+                await this.serialHandler.init();
+                this.messageButtons.forEach(button => button.removeAttribute('disabled'));
+				this.commandButtons.forEach(button => button.removeAttribute('disabled'));
+                this.disconnectButtonElem.removeAttribute('disabled');
+                this.logMessage('Connected to serial port.');
+			} catch (error) {
+            this.logMessage(`Connection failed: ${error.message}`, true);
+        }
+
+            }
+
+			async disconnect() {
+                await this.serialHandler.disconnect();
+                this.messageButtons.forEach(button => button.setAttribute('disabled', 'true'));
+                this.disconnectButtonElem.setAttribute('disabled', 'true');
+                this.logMessage('Disconnected from serial port.');
+			} 
+
+            async handleMessageButtonClick(button) 
+            {
+                const message = button.dataset.command || button.dataset.hugo;
+                await this.serialHandler.write(message);
+                this.logMessage(`Sent command: "${message}"`);
+                await this.receiveMessage();
+            }
+               
+			async handleCommandButtonClick(button) 
+			{
+  		    const message = button.dataset.command; // Changed 'value' to 'command'
+   	 		await this.serialHandler.write(message);
+    		this.logMessage(`Sent command: "${message}"`);
+    		await this.receiveMessage();
+			}
+            
+
+            async receiveMessage() 
+			{
+                console.log("Attempting to read from serial...");
+   				 const message = await this.serialHandler.read();
+   				 if (message) {
+      			  this.logMessage(`Received: ${message}`);
+   				 } else {
+        console.log("No message received from serial.");
+    }
+            }
+
+            logMessage(message, isError = false) {
+   			 const now = new Date();
+   			 const timeStamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+  			  const listElement = document.createElement('li');
+   				 listElement.textContent = `${timeStamp} - ${message}`;
+  				  listElement.style.color = isError ? 'red' : 'black';
+  				  this.serialMessagesContainer.appendChild(listElement);
+
+    // Automatically scroll to the bottom
+   				 this.serialMessagesContainer.scrollTop = this.serialMessagesContainer.scrollHeight;
+}
+        }
+		console.log('LEDControlApp class definition complete');
+
+        window.LEDControlApp = LEDControlApp;
+    </script>
+</head>
+<body>
+    <h1>TEST INTERFACE</h1>
+
+    <div class="section">
+        <h2>Connection</h2>
+        <button id="connect-to-serial">Connect to Serial Port</button>
+        <button id="disconnect-serial" disabled>Disconnect from Serial Port</button>
+    </div>
+
+    <div class="section">
+        <h2>LED Control</h2>
+		
+        <button class="message-button" data-hugo="1" disabled>LED 1 TOGGLE</button>
+		<button class="message-button" data-hugo="2" disabled>LED 2 TOGGLE</button>
+         
+		
+		
+    </div>
+	
+	<div class="section">
+        <button class="message-button" data-hugo="0" disabled>Start All Tests</button>
+    </div>
+	
+	<div class="section">
+        <h2>Start Output Tests</h2>
+        <button class="command-button1" data-command="100" disabled>ALL</button>
+		<div class="section">
+			<button class="command-button" data-command="101" disabled>1</button>
+			<button class="command-button" data-command="102" disabled>2</button>
+			<button class="command-button" data-command="103" disabled>3</button>
+			<button class="command-button" data-command="104" disabled>4</button>
+			<button class="command-button" data-command="105" disabled>5</button>
+			<button class="command-button" data-command="106" disabled>6</button>
+			<button class="command-button" data-command="107" disabled>7</button>
+			<button class="command-button" data-command="108" disabled>8</button>
+			<button class="command-button" data-command="109" disabled>9</button>
+		</div>
+		<div class="section">
+			<h3>Set Output HIGH</h3>
+			<button class="command-button" data-command="151" disabled>1</button>
+			<button class="command-button" data-command="152" disabled>2</button>
+			<button class="command-button" data-command="153" disabled>3</button>
+			<button class="command-button" data-command="154" disabled>4</button>
+			<button class="command-button" data-command="155" disabled>5</button>
+			<button class="command-button" data-command="156" disabled>6</button>
+			<button class="command-button" data-command="157" disabled>7</button>
+			<button class="command-button" data-command="158" disabled>8</button>
+			<button class="command-button" data-command="159" disabled>9</button>
+		</div>
+		<div class="section">
+			<h3>Set Output LOW</h3>
+			<button class="command-button" data-command="171" disabled>1</button>
+			<button class="command-button" data-command="172" disabled>2</button>
+			<button class="command-button" data-command="173" disabled>3</button>
+			<button class="command-button" data-command="174" disabled>4</button>
+			<button class="command-button" data-command="175" disabled>5</button>
+			<button class="command-button" data-command="176" disabled>6</button>
+			<button class="command-button" data-command="177" disabled>7</button>
+			<button class="command-button" data-command="178" disabled>8</button>
+			<button class="command-button" data-command="179" disabled>9</button>
+		</div>
+    </div>
+	
+	<div class="section">
+        <h2>SM tests</h2>
+        <button class="command-button" data-command="200" disabled>Start ALL</button>		
+		<div class="section">
+			<button class="command-button" data-command="209" disabled>9</button>
+			<button class="command-button" data-command="210" disabled>10</button>
+			<button class="command-button" data-command="211" disabled>11</button>
+			<button class="command-button" data-command="212" disabled>12</button>
+			<button class="command-button" data-command="213" disabled>13</button>
+			<button class="command-button" data-command="214" disabled>14</button>
+		</div>		
+		<div class="section">
+			<h3>Set SM Output HIGH</h3>
+			<button class="command-button" data-command="259" disabled>9</button>
+			<button class="command-button" data-command="260" disabled>10</button>
+			<button class="command-button" data-command="261" disabled>11</button>
+			<button class="command-button" data-command="262" disabled>12</button>
+			<button class="command-button" data-command="263" disabled>13</button>
+			<button class="command-button" data-command="264" disabled>14</button>
+		</div>
+		<div class="section">
+			<h3>Set SM Output LOW</h3>
+			<button class="command-button" data-command="279" disabled>9</button>
+			<button class="command-button" data-command="280" disabled>10</button>
+			<button class="command-button" data-command="281" disabled>11</button>
+			<button class="command-button" data-command="282" disabled>12</button>
+			<button class="command-button" data-command="283" disabled>13</button>
+			<button class="command-button" data-command="284" disabled>14</button>
+		</div>		
+    </div>
+	
+	<div class="section">
+        <h2>DRL Tests</h2>
+        <button class="command-button" data-command="300" disabled>Start ALL</button>		
+		<div class="section">
+			<button class="command-button" data-command="316" disabled>16</button>
+			<button class="command-button" data-command="317" disabled>17</button>
+			<button class="command-button" data-command="318" disabled>18</button>
+			<button class="command-button" data-command="319" disabled>19</button>
+			<button class="command-button" data-command="320" disabled>20</button>
+			<button class="command-button" data-command="321" disabled>21</button>
+			<button class="command-button" data-command="322" disabled>22</button>
+			<button class="command-button" data-command="323" disabled>23</button>
+			<button class="command-button" data-command="324" disabled>24</button>
+			<button class="command-button" data-command="325" disabled>25</button>
+			<button class="command-button" data-command="326" disabled>26</button>
+			<button class="command-button" data-command="327" disabled>27</button>
+			<button class="command-button" data-command="328" disabled>28</button>
+			<button class="command-button" data-command="329" disabled>29</button>
+			<button class="command-button" data-command="330" disabled>30</button>
+		</div>		
+		<div class="section">
+			<h3>Set DRL Output HIGH</h3>
+			<button class="command-button" data-command="356" disabled>16</button>
+			<button class="command-button" data-command="357" disabled>17</button>
+			<button class="command-button" data-command="358" disabled>18</button>
+			<button class="command-button" data-command="359" disabled>19</button>
+			<button class="command-button" data-command="360" disabled>20</button>
+			<button class="command-button" data-command="361" disabled>21</button>
+			<button class="command-button" data-command="362" disabled>22</button>
+			<button class="command-button" data-command="363" disabled>23</button>
+			<button class="command-button" data-command="364" disabled>24</button>
+			<button class="command-button" data-command="365" disabled>25</button>
+			<button class="command-button" data-command="366" disabled>26</button>
+			<button class="command-button" data-command="367" disabled>27</button>
+			<button class="command-button" data-command="368" disabled>28</button>
+			<button class="command-button" data-command="369" disabled>29</button>
+			<button class="command-button" data-command="370" disabled>30</button>
+		</div>
+		<div class="section">
+			<h3>Set DRL Output LOW</h3>
+			<button class="command-button" data-command="376" disabled>16</button>
+			<button class="command-button" data-command="377" disabled>17</button>
+			<button class="command-button" data-command="378" disabled>18</button>
+			<button class="command-button" data-command="379" disabled>19</button>
+			<button class="command-button" data-command="380" disabled>20</button>
+			<button class="command-button" data-command="381" disabled>21</button>
+			<button class="command-button" data-command="382" disabled>22</button>
+			<button class="command-button" data-command="383" disabled>23</button>
+			<button class="command-button" data-command="384" disabled>24</button>
+			<button class="command-button" data-command="385" disabled>25</button>
+			<button class="command-button" data-command="386" disabled>26</button>
+			<button class="command-button" data-command="387" disabled>27</button>
+			<button class="command-button" data-command="388" disabled>28</button>
+			<button class="command-button" data-command="389" disabled>29</button>
+			<button class="command-button" data-command="390" disabled>30</button>
+		</div>		
+    </div>
+	
+	<div class="section">
+        <h2>Input Tests</h2>
+        <button class="command-button" data-command="400" disabled>Start ALL</button>		
+		<div class="section">
+			<button class="command-button" data-command="401" disabled>1</button>
+			<button class="command-button" data-command="402" disabled>2</button>
+			<button class="command-button" data-command="403" disabled>3</button>
+			<button class="command-button" data-command="404" disabled>4</button>
+			<button class="command-button" data-command="405" disabled>5</button>
+			<button class="command-button" data-command="406" disabled>6</button>
+			<button class="command-button" data-command="407" disabled>7</button>
+			<button class="command-button" data-command="408" disabled>8</button>
+			<button class="command-button" data-command="409" disabled>9</button>
+			<button class="command-button" data-command="410" disabled>10</button>
+			<button class="command-button" data-command="411" disabled>11</button>
+			<button class="command-button" data-command="412" disabled>12</button>
+			<button class="command-button" data-command="413" disabled>13</button>
+			<button class="command-button" data-command="414" disabled>14</button>
+			<button class="command-button" data-command="415" disabled>15</button>
+			<button class="command-button" data-command="416" disabled>16</button>
+		</div>		
+		<div class="section">
+			<h3>Set Input HIGH</h3>
+			<button class="command-button" data-command="451" disabled>1</button>
+			<button class="command-button" data-command="452" disabled>2</button>
+			<button class="command-button" data-command="453" disabled>3</button>
+			<button class="command-button" data-command="454" disabled>4</button>
+			<button class="command-button" data-command="455" disabled>5</button>
+			<button class="command-button" data-command="456" disabled>6</button>
+			<button class="command-button" data-command="457" disabled>7</button>
+			<button class="command-button" data-command="458" disabled>8</button>
+			<button class="command-button" data-command="459" disabled>9</button>
+			<button class="command-button" data-command="460" disabled>10</button>
+			<button class="command-button" data-command="461" disabled>11</button>
+			<button class="command-button" data-command="462" disabled>12</button>
+			<button class="command-button" data-command="463" disabled>13</button>
+			<button class="command-button" data-command="464" disabled>14</button>
+			<button class="command-button" data-command="465" disabled>15</button>
+			<button class="command-button" data-command="466" disabled>16</button>
+		</div>
+		<div class="section">
+			<h3>Set Input LOW</h3>
+			<button class="command-button" data-command="471" disabled>1</button>
+			<button class="command-button" data-command="472" disabled>2</button>
+			<button class="command-button" data-command="473" disabled>3</button>
+			<button class="command-button" data-command="474" disabled>4</button>
+			<button class="command-button" data-command="475" disabled>5</button>
+			<button class="command-button" data-command="476" disabled>6</button>
+			<button class="command-button" data-command="477" disabled>7</button>
+			<button class="command-button" data-command="478" disabled>8</button>
+			<button class="command-button" data-command="479" disabled>9</button>
+			<button class="command-button" data-command="480" disabled>10</button>
+			<button class="command-button" data-command="481" disabled>11</button>
+			<button class="command-button" data-command="482" disabled>12</button>
+			<button class="command-button" data-command="483" disabled>13</button>
+			<button class="command-button" data-command="484" disabled>14</button>
+			<button class="command-button" data-command="485" disabled>15</button>
+			<button class="command-button" data-command="486" disabled>16</button>
+		</div>		
+    </div>
+	
+	<div class="section">
+        <h2>DRL Power Test</h2>
+        <button class="command-button" data-command="500" disabled>Start</button>
+	</div>
+	
+	<div class="section">
+        <h2>IOEX Output Test</h2>
+        <button class="command-button" data-command="600" disabled>Start ALL</button>		
+		<div class="section">
+			<button class="command-button" data-command="613" disabled>13</button>
+			<button class="command-button" data-command="614" disabled>14</button>
+			<button class="command-button" data-command="615" disabled>15</button>
+			<button class="command-button" data-command="616" disabled>16</button>
+		</div>		
+		<div class="section">
+			<h3>Set IOEX Test HIGH</h3>
+			<button class="command-button" data-command="653" disabled>13</button>
+			<button class="command-button" data-command="654" disabled>14</button>
+			<button class="command-button" data-command="655" disabled>15</button>
+			<button class="command-button" data-command="656" disabled>16</button>
+		</div>
+		<div class="section">
+			<h3>Set IOEX Test LOW</h3>
+			<button class="command-button" data-command="673" disabled>13</button>
+			<button class="command-button" data-command="674" disabled>14</button>
+			<button class="command-button" data-command="675" disabled>15</button>
+			<button class="command-button" data-command="676" disabled>16</button>
+		</div>		
+    </div>
+	
+	<div class="section">
+        <h2>Test 12V ok</h2>
+        <button class="command-button" data-command="700" disabled>Start</button>
+	</div>
+
+    <h2>Log:</h2>
+    <ul id="serial-messages-container"></ul>
+</body>
+</html>
